@@ -1,0 +1,314 @@
+# got manifest and sample info from here: https://portal.hmpdacc.org/search/c?filters=%7B%22op%22:%22and%22,%22content%22:%5B%7B%22op%22:%22in%22,%22content%22:%7B%22field%22:%22file.format%22,%22value%22:%5B%22FASTQ%22%5D%7D%7D,%7B%22op%22:%22in%22,%22content%22:%7B%22field%22:%22file.node_type%22,%22value%22:%5B%22wgs_raw_seq_set%22%5D%7D%7D,%7B%22op%22:%22in%22,%22content%22:%7B%22field%22:%22sample.body_site%22,%22value%22:%5B%22gingiva%22,%22dorsum%20of%20tongue%22%5D%7D%7D,%7B%22op%22:%22in%22,%22content%22:%7B%22field%22:%22sample.visit_visit_number%22,%22value%22:%5B1%5D%7D%7D%5D%7D&facetTab=cases
+    # these were the SRPs involved, just manually checked some and found these covered all
+
+conda create -n pysradb -c conda-forge -c bioconda -c defaults pysradb=2.2.0
+conda activate pysradb
+
+pysradb metadata SRP002163 > SRP002163-metadata-details.tsv
+pysradb metadata SRP056641 > SRP056641-metadata-details.tsv
+
+cat SRP002163-metadata-details.tsv <( tail -n +2 SRP056641-metadata-details.tsv ) > all-bioproject-metadata.tsv
+
+cut -f 5 hmp_manifest_52abb72a95.tsv | tail -n +2 | sort -u > all-sample-IDs.txt
+
+bash get-SRS-IDs.sh
+
+bash get-SRR-IDs.sh
+
+## that made the file i need to do the sra download and to merge the SRRs that belong to the same SRS (sample) afterwards
+
+head all-SRS-IDs-and-SRR-IDs.tsv | sed 's/^/# /'
+# SRS1055046	SRR2241026
+# SRS1055048	SRR2241108
+# SRS893363 	SRR1952602
+# SRS893385 	SRR1952623
+# SRS893272 	SRR1952503
+# SRS1055055	SRR2241116
+# SRS1055055	SRR2241117
+# SRS893352 	SRR1952591
+# SRS893355 	SRR1952595
+# SRS1055059	SRR2241208
+
+wc -l all-SRS-IDs-and-SRR-IDs.tsv
+#     1422 all-SRS-IDs-and-SRR-IDs.tsv
+
+## going to split it into chunks of 200 SRRs to download and maybe process at a time (depending on how much storage it takes up)
+    # i can always process these separately and then merge them together based on KO IDs
+    # when splitting into chunks, i need to make sure i don't split up the SRRs that belong to the same SRS (sample)
+    # so doing this manually
+
+sed -n '1,197p' all-SRS-IDs-and-SRR-IDs.tsv > SRS-IDs-and-SRR-IDs-p1.tsv
+
+sed -n '198,399p' all-SRS-IDs-and-SRR-IDs.tsv > SRS-IDs-and-SRR-IDs-p2.tsv
+
+sed -n '400,605p' all-SRS-IDs-and-SRR-IDs.tsv > SRS-IDs-and-SRR-IDs-p3.tsv 
+
+sed -n '606,807p' all-SRS-IDs-and-SRR-IDs.tsv > SRS-IDs-and-SRR-IDs-p4.tsv
+
+sed -n '808,1018p' all-SRS-IDs-and-SRR-IDs.tsv > SRS-IDs-and-SRR-IDs-p5.tsv
+
+sed -n '1019,1218p' all-SRS-IDs-and-SRR-IDs.tsv > SRS-IDs-and-SRR-IDs-p6.tsv
+
+sed -n '1219,1422p' all-SRS-IDs-and-SRR-IDs.tsv > SRS-IDs-and-SRR-IDs-p7.tsv
+
+## should have done this above, but doing it now
+    # there are a few mixed in that are single end, so scanning for those and dropping them
+    # if any are found and dropped, it will produce a file with "SRS-IDs-and-SRR-IDs-p?-removed.txt"
+bash check-for-single-end-SRRs.sh SRS-IDs-and-SRR-IDs-p1.tsv
+bash check-for-single-end-SRRs.sh SRS-IDs-and-SRR-IDs-p2.tsv
+bash check-for-single-end-SRRs.sh SRS-IDs-and-SRR-IDs-p3.tsv
+bash check-for-single-end-SRRs.sh SRS-IDs-and-SRR-IDs-p4.tsv
+bash check-for-single-end-SRRs.sh SRS-IDs-and-SRR-IDs-p5.tsv
+bash check-for-single-end-SRRs.sh SRS-IDs-and-SRR-IDs-p6.tsv
+bash check-for-single-end-SRRs.sh SRS-IDs-and-SRR-IDs-p7.tsv
+    # only 2 runs from set-1 and 2 runs from set-3, both still had paired runs, so the total samples should be the same
+
+##### making metadata table
+bash make-metadata-table.sh
+
+
+#######################
+######## set 1 ########
+#######################
+
+## sent to server and started
+bit-get-workflow sra-download
+cd bit-sra-download-wf-v1.0.0/
+
+cut -f 2 ../SRS-IDs-and-SRR-IDs-p1.tsv > target-sra-accs.txt
+
+screen -R hmp-set-1
+conda activate bit
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+# merging the SRRs that belong to the same SRS (sample)
+bash scripts/combine-sra-accessions.sh -i ../SRS-IDs-and-SRR-IDs-p1.tsv -d fastq-files/
+
+## starting metagenomics workflow
+cd ../bit-metagenomics-wf-v1.0.0/
+
+ls ../bit-sra-download-wf-v1.0.0/fastq-files/ | grep "_R1" | cut -f 1 -d "_" > unique-sample-IDs.txt
+
+nano config.yaml
+# input_reads_dir:
+#     "../bit-sra-download-wf-v1.0.1/fastq-files/"
+# perform_binning_and_MAG_recovery:
+#     "FALSE"
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+
+#######################
+######## set 2 ########
+#######################
+
+conda activate bit
+bit-get-workflow sra-download
+cd bit-sra-download-wf-v1.0.1/
+
+cut -f 2 ../SRS-IDs-and-SRR-IDs-p2.tsv > target-sra-accs.txt
+
+screen -R hmp-set-2
+conda activate bit
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+# merging the SRRs that belong to the same SRS (sample)
+bash scripts/combine-sra-accessions.sh -i ../SRS-IDs-and-SRR-IDs-p2.tsv -d fastq-files/
+
+
+## starting metagenomics workflow
+bit-get-workflow metagenomics
+cd bit-metagenomics-wf-v1.0.1/
+
+ls ../bit-sra-download-wf-v1.0.1/fastq-files/ | grep "_R1" | cut -f 1 -d "_" > unique-sample-IDs.txt
+
+nano config.yaml
+# input_reads_dir:
+#     "../bit-sra-download-wf-v1.0.1/fastq-files/"
+# perform_binning_and_MAG_recovery:
+#     "FALSE"
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+
+
+#######################
+######## set 3 ########
+#######################
+
+conda activate bit
+bit-get-workflow sra-download
+cd bit-sra-download-wf-v1.0.1/
+
+cut -f 2 ../SRS-IDs-and-SRR-IDs-p3.tsv > target-sra-accs.txt
+
+screen -R hmp-set-3
+conda activate bit
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+# merging the SRRs that belong to the same SRS (sample)
+bash scripts/combine-sra-accessions.sh -i ../SRS-IDs-and-SRR-IDs-p3.tsv -d fastq-files/
+
+
+## starting metagenomics workflow
+bit-get-workflow metagenomics
+cd bit-metagenomics-wf-v1.0.1/
+
+ls ../bit-sra-download-wf-v1.0.1/fastq-files/ | grep "_R1" | cut -f 1 -d "_" > unique-sample-IDs.txt
+
+nano config.yaml
+# input_reads_dir:
+#     "../bit-sra-download-wf-v1.0.1/fastq-files/"
+# perform_binning_and_MAG_recovery:
+#     "FALSE"
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+
+#######################
+######## set 4 ########
+#######################
+
+conda activate bit
+bit-get-workflow sra-download
+cd bit-sra-download-wf-v1.0.1/
+
+cut -f 2 ../SRS-IDs-and-SRR-IDs-p4.tsv > target-sra-accs.txt
+
+screen -R hmp-set-4
+conda activate bit
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+# merging the SRRs that belong to the same SRS (sample)
+bash scripts/combine-sra-accessions.sh -i ../SRS-IDs-and-SRR-IDs-p4.tsv -d fastq-files/
+
+
+## starting metagenomics workflow
+bit-get-workflow metagenomics
+cd bit-metagenomics-wf-v1.0.1/
+
+ls ../bit-sra-download-wf-v1.0.1/fastq-files/ | grep "_R1" | cut -f 1 -d "_" > unique-sample-IDs.txt
+
+nano config.yaml
+# input_reads_dir:
+#     "../bit-sra-download-wf-v1.0.1/fastq-files/"
+# perform_binning_and_MAG_recovery:
+#     "FALSE"
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+
+#######################
+######## set 5 ########
+#######################
+
+conda activate bit
+bit-get-workflow sra-download
+cd bit-sra-download-wf-v1.0.1/
+
+cut -f 2 ../SRS-IDs-and-SRR-IDs-p5.tsv > target-sra-accs.txt
+
+screen -R hmp-set-5
+conda activate bit
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+# merging the SRRs that belong to the same SRS (sample)
+bash scripts/combine-sra-accessions.sh -i ../SRS-IDs-and-SRR-IDs-p5.tsv -d fastq-files/
+
+
+## starting metagenomics workflow
+bit-get-workflow metagenomics
+cd bit-metagenomics-wf-v1.0.1/
+
+ls ../bit-sra-download-wf-v1.0.1/fastq-files/ | grep "_R1" | cut -f 1 -d "_" > unique-sample-IDs.txt
+
+nano config.yaml
+# input_reads_dir:
+#     "../bit-sra-download-wf-v1.0.1/fastq-files/"
+# perform_binning_and_MAG_recovery:
+#     "FALSE"
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+
+#######################
+######## set 6 ########
+#######################
+
+conda activate bit
+bit-get-workflow sra-download
+cd bit-sra-download-wf-v1.0.1/
+
+cut -f 2 ../SRS-IDs-and-SRR-IDs-p6.tsv > target-sra-accs.txt
+
+screen -R hmp-set-6
+conda activate bit
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+# merging the SRRs that belong to the same SRS (sample)
+bash scripts/combine-sra-accessions.sh -i ../SRS-IDs-and-SRR-IDs-p6.tsv -d fastq-files/
+
+
+## starting metagenomics workflow
+bit-get-workflow metagenomics
+cd bit-metagenomics-wf-v1.0.1/
+
+ls ../bit-sra-download-wf-v1.0.1/fastq-files/ | grep "_R1" | cut -f 1 -d "_" > unique-sample-IDs.txt
+
+nano config.yaml
+# input_reads_dir:
+#     "../bit-sra-download-wf-v1.0.1/fastq-files/"
+# perform_binning_and_MAG_recovery:
+#     "FALSE"
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+
+#######################
+######## set 7 ########
+#######################
+
+conda activate bit
+bit-get-workflow sra-download
+cd bit-sra-download-wf-v1.0.1/
+
+cut -f 2 ../SRS-IDs-and-SRR-IDs-p7.tsv > target-sra-accs.txt
+
+screen -R hmp-set-7
+conda activate bit
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+# merging the SRRs that belong to the same SRS (sample)
+bash scripts/combine-sra-accessions.sh -i ../SRS-IDs-and-SRR-IDs-p7.tsv -d fastq-files/
+
+
+## starting metagenomics workflow
+bit-get-workflow metagenomics
+cd bit-metagenomics-wf-v1.0.1/
+
+ls ../bit-sra-download-wf-v1.0.1/fastq-files/ | grep "_R1" | cut -f 1 -d "_" > unique-sample-IDs.txt
+
+nano config.yaml
+# input_reads_dir:
+#     "../bit-sra-download-wf-v1.0.1/fastq-files/"
+# perform_binning_and_MAG_recovery:
+#     "FALSE"
+
+time snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
+
+
+#######################
+
+# merging all outputs
+python combine-tables.py
+
+# making summary table of percent read-recruitment per sample
+grep "overall" p?-workflow-components/workflow-outputs/read-mapping/*.txt | cut -f 4- -d "/" | sed 's/-mapping-info.txt//' | sed 's/ overall alignment rate//' | tr ":" "\t" | tr -d "%" > read-recruitment-percentages-from-bowtie2.tsv
+
