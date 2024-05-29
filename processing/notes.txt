@@ -1,6 +1,6 @@
 ## see 'log' file for code details ##
 
-# ones that were single end and removed
+# ones that were single end and removed (they still had other runs (SRRs), so the sample remained)
     # set 1
 SRS011098 SRR059327
 SRS011098 SRR059326
@@ -12,3 +12,4 @@ SRS017209 SRR059323
 
 ## samples that were dropped
 # SRS150038 had virtually no reads, ~370K, no assembly was generated
+# SRS013976 had virtually no reads, ~70K, no assembly was generated

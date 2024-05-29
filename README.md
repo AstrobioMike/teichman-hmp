@@ -1,6 +1,6 @@
 # teichman-hmp
 
-This is a temporary space holding code and some files for pulling, parsing, and processing a subset of the HMP data.
+This holds code and some files for pulling, parsing, and processing a subset of 324 samples from the Human Microbiome Project.
 
 Workflows for downloading the SRA data and metagenomics processing through to the gene-level KO coverage tables were used from my [bit package](https://github.com/AstrobioMike/bit), retrieved and run as shown below:
 
@@ -31,4 +31,31 @@ snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
 
 Due to storage limitations, I divided the 324 total samples into 7 sets, processed them individually, then combined the output "Combined-gene-level-KO-function-coverages.tsv" tables into one file.
 
-The "log" file in the processing sub-directory shows all code execpt `scp` commands between local and server, and the "notes.txt" file in there has some more general info.
+The "log" file in the processing sub-directory here shows all code except `scp` commands between local and server, and the "notes.txt" file in there has some more general info.
+
+Read-recruitment to all assemblies was overall great:
+
+```bash
+bit-summarize-column -i read-recruitment-percentages-from-bowtie2.tsv -c 2
+
+#   Column '2' summary
+
+#     N:              322
+#     Min:            47.92
+#     Max:            98.45
+#     Mean:           92.13
+#     Median:         93.88
+#     StDev:          6.44
+
+#     Percentiles:
+
+#         1st:        62.31
+#         5th:        80.16
+#         10th:       86.49
+#         25th:       90.98
+#         50th:       93.88
+#         75th:       95.71
+#         90th:       96.91
+#         95th:       97.52
+#         99th:       98.08
+```

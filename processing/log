@@ -66,6 +66,8 @@ bash check-for-single-end-SRRs.sh SRS-IDs-and-SRR-IDs-p7.tsv
 ##### making metadata table
 bash make-metadata-table.sh
 
+# removing 2 that had no assembly produced due to too few reads (this was employed after future knowledge was gained... time-travel!!)
+grep -v "^SRS150038" metadata-table.tsv | grep -v "^SRS013976" > t && mv t metadata-table.tsv
 
 #######################
 ######## set 1 ########
@@ -312,3 +314,5 @@ python combine-tables.py
 # making summary table of percent read-recruitment per sample
 grep "overall" p?-workflow-components/workflow-outputs/read-mapping/*.txt | cut -f 4- -d "/" | sed 's/-mapping-info.txt//' | sed 's/ overall alignment rate//' | tr ":" "\t" | tr -d "%" > read-recruitment-percentages-from-bowtie2.tsv
 
+# adding SRR accessions to the metadata table
+bash adding-SRRs-to-metadata-table.sh
