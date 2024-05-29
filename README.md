@@ -31,7 +31,7 @@ snakemake --use-conda --conda-prefix ${CONDA_PREFIX}/envs -j 8 -p
 
 Due to storage limitations, I divided the 324 total samples into 7 sets, processed them individually, then combined the output "Combined-gene-level-KO-function-coverages.tsv" tables into one file.
 
-The "log" file in the processing sub-directory here shows all code except `scp` commands between local and server, and the "notes.txt" file in there has some more general info.
+**The "log" file in the processing sub-directory here shows all code except `scp` commands between local and server, and the "notes.txt" file in there has some more general info.**
 
 Read-recruitment to all assemblies was overall great:
 
